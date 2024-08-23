@@ -945,6 +945,116 @@ class BasicFunctionalTest extends OrmFunctionalTestCase
         $this->assertQueryCount(2);
     }
 
+    public function testManyToOneSecondLevelEagerAssociationWithSetFetchMode(): void
+    {
+        $user           = new CmsUser();
+        $user->username = 'beberlei';
+        $user->name     = 'Benjamin E.';
+        $user->status   = 'active';
+
+        $article1        = new CmsArticle();
+        $article1->topic = 'foo';
+        $article1->text  = 'bar';
+        $article1->user  = $user;
+
+        $article2        = new CmsArticle();
+        $article2->topic = 'bar';
+        $article2->text  = 'foo';
+        $article2->user  = $user;
+
+        $comment1 = new CmsComment();
+        $comment1->article = $article1;
+        $comment1->topic = 'foo';
+        $comment1->text = 'comment1';
+
+        $comment2 = new CmsComment();
+        $comment2->article = $article2;
+        $comment2->topic = 'bar';
+        $comment2->text = 'comment2';
+
+        $this->_em->persist($article1);
+        $this->_em->persist($article2);
+        $this->_em->persist($comment1);
+        $this->_em->persist($comment2);
+        $this->_em->persist($user);
+        $this->_em->flush();
+        $this->_em->clear();
+
+        $this->getQueryLog()->reset()->enable();
+        $dql   = 'SELECT u FROM Doctrine\Tests\Models\CMS\CmsUser u';
+        $users = $this->_em->createQuery($dql)
+                             ->setFetchMode(CmsUser::class, 'articles', ClassMetadata::FETCH_EAGER)
+                             ->setFetchMode(CmsArticle::class, 'comments', ClassMetadata::FETCH_EAGER)
+                             ->getResult();
+
+        foreach ($users as $user) {
+            foreach ($user->articles as $article) {
+                $this->assertTrue($article->comments->initialize(), 'Association is not initialized');
+            }
+        }
+
+        // 3 separate queries for users, articles, comments and 1 for addresses
+        $this->assertQueryCount(4);
+    }
+ 
+    public function testManyToOneSecondLevelEagerAssociationWithClassMetadata(): void
+    {
+        $user           = new CmsUser();
+        $user->username = 'beberlei';
+        $user->name     = 'Benjamin E.';
+        $user->status   = 'active';
+
+        $article1        = new CmsArticle();
+        $article1->topic = 'foo';
+        $article1->text  = 'bar';
+        $article1->user  = $user;
+
+        $article2        = new CmsArticle();
+        $article2->topic = 'bar';
+        $article2->text  = 'foo';
+        $article2->user  = $user;
+
+        $comment1 = new CmsComment();
+        $comment1->article = $article1;
+        $comment1->topic = 'foo';
+        $comment1->text = 'comment1';
+
+        $comment2 = new CmsComment();
+        $comment2->article = $article2;
+        $comment2->topic = 'bar';
+        $comment2->text = 'comment2';
+
+        $this->_em->persist($article1);
+        $this->_em->persist($article2);
+        $this->_em->persist($comment1);
+        $this->_em->persist($comment2);
+        $this->_em->persist($user);
+        $this->_em->flush();
+        $this->_em->clear();
+
+        $classMetadata = $this->_em->getClassMetadata(CmsArticle::class);
+
+        $fetchMode = $classMetadata->associationMappings['comments']['fetch'];
+        $classMetadata->associationMappings['comments']['fetch'] = ClassMetadata::FETCH_EAGER;
+
+        $this->getQueryLog()->reset()->enable();
+        $dql   = 'SELECT u FROM Doctrine\Tests\Models\CMS\CmsUser u';
+        $users = $this->_em->createQuery($dql)
+                             ->setFetchMode(CmsUser::class, 'articles', ClassMetadata::FETCH_EAGER)
+                             ->getResult();
+
+        $classMetadata->associationMappings['comments']['fetch'] = $fetchMode;
+
+        foreach ($users as $user) {
+            foreach ($user->articles as $article) {
+                $this->assertTrue($article->comments->isInitialized(), 'Association is not initialized');
+            }
+        }
+
+        // 3 separate queries for users, articles, comments and 1 for addresses
+        $this->assertQueryCount(4);
+    }
+
     #[Group('DDC-720')]
     public function testFlushSingleManagedEntity(): void
     {
